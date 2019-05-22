@@ -1,4 +1,5 @@
 import sys, os
+#import unidecode
 
 import numpy as np
 
@@ -55,7 +56,7 @@ class Vocabulary:
 			onehot[word_index] = 1;
 		return onehot
 
-def create_vocabulary(model_name):
+def load_corpus(model_name):
 	# Load source file
 	cwd = os.getcwd()
 	corpus_path = os.path.join(cwd, 'models', model_name, 'corpus.txt')
@@ -67,9 +68,15 @@ def create_vocabulary(model_name):
 		print("Make sure that the file exists and is accessible")
 		sys.exit()
 	# Preprocess source file
+	#raw = unidecode.unidecode(raw)
 	tokens = word_tokenize(raw)
 	filtered_tokens = [t for t in tokens if t not in "''``.,!?;:--()"] #'".,!?;:-—'
 	text = nltk.Text(filtered_tokens)
+	return text
+		
+def create_vocabulary(model_name):
+	# Load text from corpus
+	text = load_corpus(model_name)
 	# Create vocabulary
 	words = [w.lower() for w in text]
 	vocab = Vocabulary(sorted(set(words)))
@@ -77,12 +84,13 @@ def create_vocabulary(model_name):
 	#print(vocab.vocabulary[:100])
 	print("Created vocabulary")
 	# Save vocabulary to file
+	cwd = os.getcwd()
 	vocab_path = os.path.join(cwd, 'models', model_name, 'vocabulary.txt')
 	vocab_file = open(vocab_path, "w")
 	for word in vocab.vocabulary:
 		vocab_file.write(word + "\n")
 	print("Saved vocabulary")
-	return vocab
+	return text, vocab
 	
 def load_vocabulary(model_name):
 	# Load vocabulary file
@@ -94,18 +102,26 @@ def load_vocabulary(model_name):
 		words.append(line.rstrip())
 	vocab = Vocabulary(words)
 	print("Loaded vocabulary")
-	print(vocab.vocabulary[:50])
+	#print(vocab.vocabulary[:50])
 	return vocab
 		
 def train_embedding(model_name, window_size=2, epochs=10):
-	# Create vocabulary
-	vocab = create_vocabulary(model_name)
+	# Get vocabulary
+	text = None
+	vocab = None
+	try:
+		# either by loading an existing one
+		vocab = load_vocabulary(model_name)
+		text = load_corpus(model_name)
+	except FileNotFoundError:
+		# or creating it from scratch
+		print("Unable to load vocabulary. Trying to create it instead.")
+		text, vocab = create_vocabulary(model_name)
 	#print(len(vocab.vocabulary))
 	#print(vocab.vocabulary[:100])
-	print("Created vocabulary")
 	# Create skip-grams, i.e. the training data
-	X_train = np.empty()
-	y_train = np.empty()
+	X_train = []
+	y_train = []
 	for i in range(len(text)):
 		context = []
 		for j in range(i-window_size, i+window_size+1):
@@ -152,8 +168,7 @@ def main():
 	# Interpret command line argument
 	model_name = sys.argv[1]
 	# Call correct function
-	#train_embedding(model_name)
-	load_vocabulary(model_name)
+	train_embedding(model_name)
 	
 if __name__== "__main__":
 	main()
