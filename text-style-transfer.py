@@ -15,8 +15,10 @@ from nltk.corpus import stopwords
 # Class for training word2vec embeddings
 class EmbeddingModel:
 
-	def __init__(self, vocab, n=100):
+	def __init__(self, vocab, n=100, model_name=None):
+		self.vocabulary = vocab
 		self.model = self.create_model(vocab, n)
+		self.embedding_model = Model(inputs=model.input, outputs=model.get_layer("embedding").output)
 		self.dimensions = n
 
 	def create_model(self, vocab, n):
@@ -26,6 +28,18 @@ class EmbeddingModel:
 		model.add(Activation("softmax"))
 		model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['acc'])
 		return model
+		
+	def train(self, X_train, y_train, epochs):
+		self.model.fit(X_train, y_train, epochs=epochs)
+		
+	def get_embedding(self, word):
+		embedding = None
+		if self.vocabulary.contains(word):
+			input = self.vocabulary.word2onehot(word)
+			embedding = self.embedding_model.predict(input)
+		return embedding
+			
+		
 		
 # Model for transforms between to word2vec embeddings (order matters)
 class TransformModel:
@@ -40,19 +54,29 @@ class Vocabulary:
 		self.vocabulary = vocab
 		self.count = len(vocab)
 		
+	def contains(self, word):
+		return self.vocabulary.contains(word)
+		
 	def word2onehot(self, word):
-		onehot = None
-		#if self.vocabulary.contains(word.lower()):
 		onehot = np.zeros(len(self.vocabulary))
-		word_index = self.vocabulary.index(word.lower())
+		try:
+			word_index = self.vocabulary.index(word.lower())
+		except ValueError:
+			print('Word "', word.lower(), '" not found in vocabulary! Vocabulary might be outdated or corrupted.')
+			print("Try deleting the vocabulary file and running the program again.")
+			sys.exit()
 		onehot[word_index] = 1;
 		return onehot
 		
 	def context2onehot(self, context):
 		onehot = np.zeros(len(self.vocabulary))
 		for word in context:
-			#if self.vocabulary.contains(word.lower()):
-			word_index = self.vocabulary.index(word.lower())
+			try:
+				word_index = self.vocabulary.index(word.lower())
+			except ValueError:
+				print('Word "', word.lower(), '" not found in vocabulary! Vocabulary might be outdated or corrupted.')
+				print("Try deleting the vocabulary file and running the program again.")
+				sys.exit()
 			onehot[word_index] = 1;
 		return onehot
 
@@ -90,7 +114,7 @@ def create_vocabulary(model_name):
 	for word in vocab.vocabulary:
 		vocab_file.write(word + "\n")
 	print("Saved vocabulary")
-	return text, vocab
+	return vocab
 	
 def load_vocabulary(model_name):
 	# Load vocabulary file
@@ -104,22 +128,9 @@ def load_vocabulary(model_name):
 	print("Loaded vocabulary")
 	#print(vocab.vocabulary[:50])
 	return vocab
-		
-def train_embedding(model_name, window_size=2, epochs=10):
-	# Get vocabulary
-	text = None
-	vocab = None
-	try:
-		# either by loading an existing one
-		vocab = load_vocabulary(model_name)
-		text = load_corpus(model_name)
-	except FileNotFoundError:
-		# or creating it from scratch
-		print("Unable to load vocabulary. Trying to create it instead.")
-		text, vocab = create_vocabulary(model_name)
-	#print(len(vocab.vocabulary))
-	#print(vocab.vocabulary[:100])
-	# Create skip-grams, i.e. the training data
+	
+def create_training_data(model_name):
+	text = load_corpus(model_name)
 	X_train = []
 	y_train = []
 	for i in range(len(text)):
@@ -130,12 +141,31 @@ def train_embedding(model_name, window_size=2, epochs=10):
 		X_train.append(vocab.word2onehot(text[i]))
 		y_train.append(vocab.context2onehot(context))
 	print("Created training samples")
+	X_train = np.array(X_train)
+	y_train = np.array(y_train)
+	print("Training data created")
+	return X_train, y_train
+		
+def train_embedding(model_name, window_size=2, epochs=10):
+	# Get vocabulary
+	try:
+		# either by loading an existing one
+		vocab = load_vocabulary(model_name)
+	except FileNotFoundError:
+		# or creating it from scratch
+		print("Unable to load vocabulary. Trying to create it instead.")
+		vocab = create_vocabulary(model_name)
+	#print(len(vocab.vocabulary))
+	#print(vocab.vocabulary[:100])
+	# Create skip-grams, i.e. the training data
+	X_train, y_train = create_training_data(model_name)
+	print(X_train.shape)
 	#print("Samples:", len(training_data))
 	# Create model
 	model = EmbeddingModel(vocab)
 	# Train model
 	print("Starting training")
-	model.model.fit(X_train, y_train, epochs=epochs)
+	model.train(X_train, y_train, epochs=epochs)
 	# Save model to file
 	# Save vocabulary to file
 	# Save embedding to file
