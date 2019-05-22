@@ -3,7 +3,7 @@ import sys, os
 
 import numpy as np
 
-#from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity
 
 import keras
 from keras.models import Model, Sequential, load_model
@@ -82,7 +82,13 @@ class Vocabulary:
 		self.count = len(vocab)
 		
 	def contains(self, word):
+		word = word.lower()
 		return word in self.vocabulary
+		
+	def get_index(self, word):
+		word = word.lower()
+		if word in self.vocabulary:
+			return self.vocabulary.index(word)
 		
 	def word2onehot(self, word):
 		onehot = np.zeros(self.count)
@@ -218,6 +224,20 @@ def create_vocabulary_embedding(model_name):
 	print("Embeddings saved")
 	return embeddings
 
+def find_closest_word(model_name, embeddings, word, n=5):
+	vocab = get_vocabulary(model_name)
+	index = vocab.get_index(word)
+	score = 0
+	output = ""
+	for w in vocab.vocabulary:
+		new_index = vocab.get_index(w)
+		if new_index != index:
+			new_score = cosine_similarity(embeddings[index], embeddings[new_index])
+			if new_score > score:
+				score = new_score
+				output = w
+	print("Closest match is", output, "with a similarity of", score)
+	
 def train_transform(input_model_name, output_model_name, epochs=50):
 	# Load embeddings from file
 	# Create transform model
@@ -245,7 +265,8 @@ def main(argv):
 	# Interpret command line argument
 	model_name = sys.argv[1]
 	# Call correct function
-	create_vocabulary_embedding(model_name)
+	embeddings = create_vocabulary_embedding(model_name)
+	find_closest_word(model_name, embeddings, "god")
 	
 if __name__== "__main__":
 	app.run(main)
