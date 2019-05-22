@@ -3,8 +3,10 @@ import sys, os
 
 import numpy as np
 
+#from sklearn.metrics.pairwise import cosine_similarity
+
 import keras
-from keras.models import Sequential
+from keras.models import Model, Sequential, load_model
 from keras.layers import Dense, Activation
 
 import nltk
@@ -15,10 +17,14 @@ from nltk.corpus import stopwords
 # Class for training word2vec embeddings
 class EmbeddingModel:
 
-	def __init__(self, vocab, n=100, model_name=None):
+	def __init__(self, model_name, vocab, n=100):
 		self.vocabulary = vocab
-		self.model = self.create_model(vocab, n)
-		self.embedding_model = Model(inputs=model.input, outputs=model.get_layer("embedding").output)
+		self.model_name = model_name
+		try:
+			self.load_model()
+		except OSError:
+			self.model = self.create_model(vocab, n)
+		self.embedding_model = Model(inputs=self.model.input, outputs=self.model.get_layer("embedding").output)
 		self.dimensions = n
 
 	def create_model(self, vocab, n):
@@ -27,10 +33,13 @@ class EmbeddingModel:
 		model.add(Dense(vocab.count))
 		model.add(Activation("softmax"))
 		model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['acc'])
+		print("Created embedding model")
 		return model
 		
-	def train(self, X_train, y_train, epochs):
+	def train(self, X_train, y_train, epochs, save_model=True):
 		self.model.fit(X_train, y_train, epochs=epochs)
+		if save_model:
+			self.save_model()
 		
 	def get_embedding(self, word):
 		embedding = None
@@ -38,7 +47,19 @@ class EmbeddingModel:
 			input = self.vocabulary.word2onehot(word)
 			embedding = self.embedding_model.predict(input)
 		return embedding
-			
+		
+	def get_model_path(self):
+		cwd = os.getcwd()
+		model_path = os.path.join(cwd, 'models', self.model_name, 'embedding_model.h5')
+		return model_path
+		
+	def load_model(self):
+		self.model = load_model(self.get_model_path())
+		print("Loaded existing embedding model")
+	
+	def save_model(self):
+		self.model.save(self.get_model_path())
+		print("Saved embedding model")
 		
 		
 # Model for transforms between to word2vec embeddings (order matters)
@@ -129,7 +150,7 @@ def load_vocabulary(model_name):
 	#print(vocab.vocabulary[:50])
 	return vocab
 	
-def create_training_data(model_name):
+def create_training_data(model_name, vocab, window_size):
 	text = load_corpus(model_name)
 	X_train = []
 	y_train = []
@@ -141,12 +162,12 @@ def create_training_data(model_name):
 		X_train.append(vocab.word2onehot(text[i]))
 		y_train.append(vocab.context2onehot(context))
 	print("Created training samples")
-	X_train = np.array(X_train)
-	y_train = np.array(y_train)
+	X_train = np.asarray(X_train)
+	y_train = np.asarray(y_train)
 	print("Training data created")
 	return X_train, y_train
 		
-def train_embedding(model_name, window_size=2, epochs=10):
+def train_embedding_model(model_name, window_size=2, epochs=10):
 	# Get vocabulary
 	try:
 		# either by loading an existing one
@@ -158,11 +179,11 @@ def train_embedding(model_name, window_size=2, epochs=10):
 	#print(len(vocab.vocabulary))
 	#print(vocab.vocabulary[:100])
 	# Create skip-grams, i.e. the training data
-	X_train, y_train = create_training_data(model_name)
+	X_train, y_train = create_training_data(model_name, vocab, window_size)
 	print(X_train.shape)
 	#print("Samples:", len(training_data))
 	# Create model
-	model = EmbeddingModel(vocab)
+	model = EmbeddingModel(model_name, vocab)
 	# Train model
 	print("Starting training")
 	model.train(X_train, y_train, epochs=epochs)
@@ -170,6 +191,9 @@ def train_embedding(model_name, window_size=2, epochs=10):
 	# Save vocabulary to file
 	# Save embedding to file
 	return
+	
+#def create_vocabulary_embedding(model_name):
+	
 
 def train_transform(input_model_name, output_model_name, epochs=50):
 	# Load embeddings from file
