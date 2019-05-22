@@ -14,27 +14,31 @@ import nltk
 from nltk import word_tokenize
 from nltk.corpus import stopwords
 
+from absl import app, flags
+
+FLAGS = flags.FLAGS
+flags.DEFINE_string('model', None, 'The name of the model')
+flags.DEFINE_integer('window_size', 2, 'Size of context window, defaults to 2', lower_bound=1)
+flags.DEFINE_integer('epochs', 10, 'Number of epochs to train, defaults to 10', lower_bound=1)
+flags.DEFINE_integer('dimensions', 100, 'Number of dimensions to embed words in, defaults to 100', lower_bound=1)
+#flags.DEFINE_boolean('debug', False, 'Produces debugging output.')
+
 # Class for training word2vec embeddings
 class EmbeddingModel:
 
 	def __init__(self, model_name, vocab, n=100):
 		self.vocabulary = vocab
 		self.model_name = model_name
-		try:
-			self.load_model()
-		except OSError:
-			self.model = self.create_model(vocab, n)
-		self.embedding_model = Model(inputs=self.model.input, outputs=self.model.get_layer("embedding").output)
 		self.dimensions = n
 
-	def create_model(self, vocab, n):
-		model = Sequential()
-		model.add(Dense(n, input_shape=(vocab.count,), name="embedding"))
-		model.add(Dense(vocab.count))
-		model.add(Activation("softmax"))
-		model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['acc'])
-		print("Created embedding model")
-		return model
+	def init_model(self):
+		self.model = Sequential()
+		self.model.add(Dense(self.dimensions, input_shape=(self.vocabulary.count,), name="embedding"))
+		self.model.add(Dense(self.vocabulary.count))
+		self.model.add(Activation("softmax"))
+		self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['acc'])
+		self.embedding_model = Model(inputs=self.model.input, outputs=self.model.get_layer("embedding").output)
+		print("Initialized embedding model")
 		
 	def train(self, X_train, y_train, epochs, save_model=True):
 		self.model.fit(X_train, y_train, epochs=epochs)
@@ -45,7 +49,7 @@ class EmbeddingModel:
 		embedding = None
 		if self.vocabulary.contains(word):
 			input = self.vocabulary.word2onehot(word)
-			embedding = self.embedding_model.predict(input)
+			embedding = self.embedding_model.predict(input.reshape((1, -1)))
 		return embedding
 		
 	def get_model_path(self):
@@ -55,6 +59,8 @@ class EmbeddingModel:
 		
 	def load_model(self):
 		self.model = load_model(self.get_model_path())
+		print(self.model.summary())
+		self.embedding_model = Model(inputs=self.model.input, outputs=self.model.get_layer("embedding").output)
 		print("Loaded existing embedding model")
 	
 	def save_model(self):
@@ -76,10 +82,10 @@ class Vocabulary:
 		self.count = len(vocab)
 		
 	def contains(self, word):
-		return self.vocabulary.contains(word)
+		return word in self.vocabulary
 		
 	def word2onehot(self, word):
-		onehot = np.zeros(len(self.vocabulary))
+		onehot = np.zeros(self.count)
 		try:
 			word_index = self.vocabulary.index(word.lower())
 		except ValueError:
@@ -90,7 +96,7 @@ class Vocabulary:
 		return onehot
 		
 	def context2onehot(self, context):
-		onehot = np.zeros(len(self.vocabulary))
+		onehot = np.zeros(self.count)
 		for word in context:
 			try:
 				word_index = self.vocabulary.index(word.lower())
@@ -118,7 +124,14 @@ def load_corpus(model_name):
 	filtered_tokens = [t for t in tokens if t not in "''``.,!?;:--()"] #'".,!?;:-—'
 	text = nltk.Text(filtered_tokens)
 	return text
-		
+
+def get_vocabulary(model_name):
+	try:
+		vocab = load_vocabulary(model_name)
+	except FileNotFoundError:
+		vocab = create_vocabulary(model_name)
+	return vocab
+	
 def create_vocabulary(model_name):
 	# Load text from corpus
 	text = load_corpus(model_name)
@@ -166,34 +179,44 @@ def create_training_data(model_name, vocab, window_size):
 	y_train = np.asarray(y_train)
 	print("Training data created")
 	return X_train, y_train
-		
-def train_embedding_model(model_name, window_size=2, epochs=10):
+	
+def train_embedding_model(model_name, window_size=2, epochs=10, vocab=None):
 	# Get vocabulary
-	try:
-		# either by loading an existing one
-		vocab = load_vocabulary(model_name)
-	except FileNotFoundError:
-		# or creating it from scratch
-		print("Unable to load vocabulary. Trying to create it instead.")
-		vocab = create_vocabulary(model_name)
-	#print(len(vocab.vocabulary))
-	#print(vocab.vocabulary[:100])
+	if not vocab:
+		vocab = get_vocabulary(model_name)
 	# Create skip-grams, i.e. the training data
 	X_train, y_train = create_training_data(model_name, vocab, window_size)
-	print(X_train.shape)
+	#print(X_train.shape)
 	#print("Samples:", len(training_data))
 	# Create model
 	model = EmbeddingModel(model_name, vocab)
+	model.init_model()
 	# Train model
 	print("Starting training")
 	model.train(X_train, y_train, epochs=epochs)
-	# Save model to file
-	# Save vocabulary to file
+	return model
+	
+def create_vocabulary_embedding(model_name):
+	# Load or create vocabulary
+	vocab = get_vocabulary(model_name)
+	# Load or create embedding model
+	embedding_model = EmbeddingModel(model_name, vocab, FLAGS.dimensions)
+	try:
+		embedding_model.load_model()
+	except OSError:
+		print("Could not load embedding model. Attempting training.")
+		embedding_model = train_embedding_model(model_name, FLAGS.window_size, FLAGS.epochs, vocab)
+	# Create a list of embeddings for each word in the vocabulary
+	embeddings = []
+	for word in vocab.vocabulary:
+		embeddings.append(embedding_model.get_embedding(word))
+	embeddings = np.array(embeddings)
 	# Save embedding to file
-	return
-	
-#def create_vocabulary_embedding(model_name):
-	
+	cwd = os.getcwd()
+	embed_path = os.path.join(cwd, 'models', model_name, 'embeddings.npy')
+	np.save(embed_path, embeddings)
+	print("Embeddings saved")
+	return embeddings
 
 def train_transform(input_model_name, output_model_name, epochs=50):
 	# Load embeddings from file
@@ -214,7 +237,7 @@ def transfer_style(input_file, input_model_name, output_model_name, output_file=
 	# Print new text
 	return
 	
-def main():
+def main(argv):
 	# Check that relevant parameters have been given
 	if (len(sys.argv) < 2):
 		print("Usage: python text-style-transfer.py <model_name>")
@@ -222,7 +245,7 @@ def main():
 	# Interpret command line argument
 	model_name = sys.argv[1]
 	# Call correct function
-	train_embedding(model_name)
+	create_vocabulary_embedding(model_name)
 	
 if __name__== "__main__":
-	main()
+	app.run(main)
