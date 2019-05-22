@@ -71,9 +71,34 @@ class EmbeddingModel:
 # Model for transforms between to word2vec embeddings (order matters)
 class TransformModel:
 	
-	def __init__(self):
-		self.input_name = "name"
-		self.output_name = "name"
+	def __init__(self, input_name, output_name, n=100):
+		self.input_model_name = input_name
+		self.output_model_name = output_name
+		self.dimensions = n
+
+	def init_model(self):
+		self.model = Sequential()
+		self.model.add(Dense(self.dimensions, input_shape=(self.dimensions,)))
+		self.model.compile(optimizer='adam', loss='mse', metrics=['mse'])
+		print("Initialized transform model")
+		
+	def train(self, X_train, y_train, epochs, save_model=True):
+		self.model.fit(X_train, y_train, epochs=epochs)
+		if save_model:
+			self.save_model()
+		
+	def get_model_path(self):
+		cwd = os.getcwd()
+		model_path = os.path.join(cwd, 'models', self.input_model_name, 'to_' + self.output_model_name + '.h5')
+		return model_path
+		
+	def load_model(self):
+		self.model = load_model(self.get_model_path())
+		print("Loaded existing transform model")
+	
+	def save_model(self):
+		self.model.save(self.get_model_path())
+		print("Saved transform model")
 	
 class Vocabulary:
 	
@@ -223,20 +248,20 @@ def create_vocabulary_embedding(model_name):
 	np.save(embed_path, embeddings)
 	print("Embeddings saved")
 	return embeddings
-
-def find_closest_word(model_name, embeddings, word, n=5):
-	vocab = get_vocabulary(model_name)
-	index = vocab.get_index(word)
-	score = 0
-	output = ""
-	for w in vocab.vocabulary:
-		new_index = vocab.get_index(w)
-		if new_index != index:
-			new_score = cosine_similarity(embeddings[index], embeddings[new_index])
-			if new_score > score:
-				score = new_score
-				output = w
-	print("Closest match is", output, "with a similarity of", score)
+	
+def load_vocabulary_embedding(model_name):
+	# Load embedding file
+	cwd = os.getcwd()
+	embed_path = os.path.join(cwd, 'models', model_name, 'embeddings.npy')
+	embeddings = np.load(embed_path)
+	return embeddings
+	
+def get_vocabulary_embedding(model_name):
+	try:
+		embedding = load_vocabulary_embedding(model_name)
+	except FileNotFoundError:
+		embedding = create_vocabulary_embedding(model_name)
+	return embedding
 	
 def find_closest_words(model_name, embeddings, word, n=5):
 	vocab = get_vocabulary(model_name)
@@ -252,13 +277,30 @@ def find_closest_words(model_name, embeddings, word, n=5):
 	for i in ind[1:]:
 		print(vocab.vocabulary[i], ", score:", scores[i])
 	
-def train_transform(input_model_name, output_model_name, epochs=50):
-	# Load embeddings from file
+def train_transform_model(input_model_name, output_model_name):
+	# Load vocabularies for both models
+	input_vocabulary = get_vocabulary(input_model_name)
+	output_vocabulary = get_vocabulary(output_model_name)
+	# Load embeddings for both models
+	input_embeddings = get_vocabulary_embedding(input_model_name)
+	output_embeddings = get_vocabulary_embedding(output_model_name)
 	# Create transform model
+	transform_model = TransformModel(input_model_name, output_model_name, FLAGS.dimensions)
+	transform_model.init_model()
 	# Identify words shared between vocabularies and create training data
+	X_train = []
+	y_train = []
+	for i in range(input_vocabulary.count):
+		w = input_vocabulary.vocabulary[i]
+		other_idx = output_vocabulary.get_index(w)
+		if other_idx:
+			X_train.append(input_embeddings[i])
+			y_train.append(output_embeddings[other_idx])
+	X_train = np.squeeze(np.asarray(X_train))
+	y_train = np.squeeze(np.asarray(y_train))
 	# Train the model
-	# Store the model to file
-	return
+	transform_model.train(X_train, y_train, FLAGS.epochs, save_model=True)
+	return transform_model
 
 def transfer_style(input_file, input_model_name, output_model_name, output_file=None):
 	# Load embeddings for both models
@@ -274,13 +316,16 @@ def transfer_style(input_file, input_model_name, output_model_name, output_file=
 def main(argv):
 	# Check that relevant parameters have been given
 	if (len(sys.argv) < 2):
-		print("Usage: python text-style-transfer.py <model_name>")
+		print("Usage: python text-style-transfer.py <operation> [other arguments]")
 		sys.exit()
-	# Interpret command line argument
-	model_name = sys.argv[1]
-	# Call correct function
-	embeddings = create_vocabulary_embedding(model_name)
-	find_closest_words(model_name, embeddings, "jesus")
+	# Interpret command line arguments and call correct function
+	operation = sys.argv[1]
+	if operation == "train_transform":
+		input_model_name = sys.argv[2]
+		output_model_name = sys.argv[3]
+		train_transform_model(input_model_name, output_model_name)
+	#embeddings = create_vocabulary_embedding(model_name)
+	#find_closest_words(model_name, embeddings, "jesus")
 	
 if __name__== "__main__":
 	app.run(main)
