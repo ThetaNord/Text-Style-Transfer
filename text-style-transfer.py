@@ -238,6 +238,20 @@ def find_closest_word(model_name, embeddings, word, n=5):
 				output = w
 	print("Closest match is", output, "with a similarity of", score)
 	
+def find_closest_words(model_name, embeddings, word, n=5):
+	vocab = get_vocabulary(model_name)
+	index = vocab.get_index(word)
+	scores = []
+	for i in range(vocab.count):
+		scores.append(cosine_similarity(embeddings[i], embeddings[index])[0][0])
+	scores = np.array(scores)
+	print(scores.shape)
+	ind = np.argpartition(scores, -(n+1))[-(n+1):]
+	ind = ind[np.argsort(scores[ind])[::-1]]
+	print("Closest matches for '", word, "' are:")
+	for i in ind[1:]:
+		print(vocab.vocabulary[i], ", score:", scores[i])
+	
 def train_transform(input_model_name, output_model_name, epochs=50):
 	# Load embeddings from file
 	# Create transform model
@@ -266,7 +280,7 @@ def main(argv):
 	model_name = sys.argv[1]
 	# Call correct function
 	embeddings = create_vocabulary_embedding(model_name)
-	find_closest_word(model_name, embeddings, "god")
+	find_closest_words(model_name, embeddings, "jesus")
 	
 if __name__== "__main__":
 	app.run(main)
