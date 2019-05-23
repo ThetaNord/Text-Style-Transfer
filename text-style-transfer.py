@@ -86,6 +86,10 @@ class TransformModel:
 		self.model.fit(X_train, y_train, epochs=epochs)
 		if save_model:
 			self.save_model()
+			
+	def transform(self, input):
+		transform = self.model.predict(input.reshape((1, -1)))
+		return transform
 		
 	def get_model_path(self):
 		cwd = os.getcwd()
@@ -276,6 +280,16 @@ def find_closest_words(model_name, embeddings, word, n=5):
 	print("Closest matches for '", word, "' are:")
 	for i in ind[1:]:
 		print(vocab.vocabulary[i], ", score:", scores[i])
+		
+def find_nearest_word(vocab, embeddings, input_coordinates):
+	word = None
+	score = 0
+	for i in range(vocab.count):
+		new_score = cosine_similarity(embeddings[i], input_coordinates)[0][0]
+		if new_score > score:
+			word = vocab.vocabulary[i]
+			score = new_score
+	return word, score
 	
 def train_transform_model(input_model_name, output_model_name):
 	# Load vocabularies for both models
@@ -302,15 +316,52 @@ def train_transform_model(input_model_name, output_model_name):
 	transform_model.train(X_train, y_train, FLAGS.epochs, save_model=True)
 	return transform_model
 
+def get_transfrom_model(input_model_name, output_model_name):
+	transform_model = TransformModel(input_model_name, output_model_name)
+	try:
+		transform_model.load_model()
+	except OSError:
+		transform_model = train_transform_model(input_model_name, output_model_name)
+	return transform_model
+	
+def load_input_text(input_file):
+	raw = open(input_file).read()
+	tokens = word_tokenize(raw)
+	cleaned_tokens = [w.lower() for w in tokens]
+	text = nltk.Text(cleaned_tokens)
+	return text
+	
 def transfer_style(input_file, input_model_name, output_model_name, output_file=None):
-	# Load embeddings for both models
-	# Load the transform model from input to output
+	# Get vocabularies for both models
+	input_vocabulary = get_vocabulary(input_model_name)
+	output_vocabulary = get_vocabulary(output_model_name)
+	# Get embeddings for both models
+	input_embeddings = get_vocabulary_embedding(input_model_name)
+	output_embeddings = get_vocabulary_embedding(output_model_name)
+	# Get the transform model from input to output
+	transform_model = get_transfrom_model(input_model_name, output_model_name)
+	# Load input text
+	text = load_input_text(input_file)
+	new_tokens = [None] * len(text)
 	# For each word in input text
+	for i in range(len(text)):
+		word = text[i]
 		# Find if it exists in input corpus
-		# Transform to output embedding
-		# Find nearest neighbour in output space
+		if word in input_vocabulary.vocabulary:
+			print('"'+word+'" replaced with "', end="")
+			# Transform to output embedding
+			idx = input_vocabulary.get_index(word)
+			embedding = input_embeddings[idx]
+			transformed_embedding = transform_model.transform(embedding)
+			# Find nearest neighbour in output space
+			word, score = find_nearest_word(output_vocabulary, output_embeddings, transformed_embedding)
+			print(word+'" ('+str(score)+')')
 		# Replace the word
+		new_tokens[i] = word
+	new_text = nltk.Text(new_tokens)
 	# Print new text
+	for word in new_text:
+		print(word, end=' ')
 	return
 	
 def main(argv):
@@ -320,10 +371,15 @@ def main(argv):
 		sys.exit()
 	# Interpret command line arguments and call correct function
 	operation = sys.argv[1]
-	if operation == "train_transform":
+	if operation == "train-transform":
 		input_model_name = sys.argv[2]
 		output_model_name = sys.argv[3]
 		train_transform_model(input_model_name, output_model_name)
+	elif operation == "style-transfer":
+		input_file = sys.argv[2]
+		input_model_name = sys.argv[3]
+		output_model_name = sys.argv[4]
+		transfer_style(input_file, input_model_name, output_model_name)
 	#embeddings = create_vocabulary_embedding(model_name)
 	#find_closest_words(model_name, embeddings, "jesus")
 	
