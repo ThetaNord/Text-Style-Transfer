@@ -78,8 +78,9 @@ class TransformModel:
 
 	def init_model(self):
 		self.model = Sequential()
-		self.model.add(Dense(self.dimensions, input_shape=(self.dimensions,)))
-		self.model.compile(optimizer='adam', loss='mse', metrics=['mse'])
+		self.model.add(Dense(50, input_shape=(self.dimensions,)))
+		self.model.add(Dense(self.dimensions))
+		self.model.compile(optimizer='adam', loss='cosine_proximity', metrics=['cosine_proximity'])
 		print("Initialized transform model")
 		
 	def train(self, X_train, y_train, epochs, save_model=True):
@@ -380,8 +381,13 @@ def main(argv):
 		input_model_name = sys.argv[3]
 		output_model_name = sys.argv[4]
 		transfer_style(input_file, input_model_name, output_model_name)
-	#embeddings = create_vocabulary_embedding(model_name)
-	#find_closest_words(model_name, embeddings, "jesus")
+	elif operation == "proximity-test":
+		model_name = sys.argv[2]
+		embeddings = get_vocabulary_embedding(model_name)
+		find_closest_words(model_name, embeddings, "jesus")
+		find_closest_words(model_name, embeddings, "god")
+		find_closest_words(model_name, embeddings, "it")
+		find_closest_words(model_name, embeddings, "was")
 	
 if __name__== "__main__":
 	app.run(main)
