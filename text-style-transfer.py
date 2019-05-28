@@ -19,6 +19,7 @@ from absl import app, flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string('model', None, 'The name of the model')
 flags.DEFINE_integer('window_size', 2, 'Size of context window, defaults to 2', lower_bound=1)
+flags.DEFINE_integer('batch_size', 32, 'Batch size for embedding training, defaults to 32', lower_bound=1)
 flags.DEFINE_integer('epochs', 10, 'Number of epochs to train, defaults to 10', lower_bound=1)
 flags.DEFINE_integer('dimensions', 100, 'Number of dimensions to embed words in, defaults to 100', lower_bound=1)
 flags.DEFINE_string('output', None, 'Output file name')
@@ -43,6 +44,11 @@ class EmbeddingModel:
 		
 	def train(self, X_train, y_train, epochs, save_model=True):
 		self.model.fit(X_train, y_train, epochs=epochs)
+		if save_model:
+			self.save_model()
+			
+	def train_generator(self, generator_func, step_count, epochs, save_model=True):
+		self.model.fit_generator(generator=generator_func, steps_per_epoch=step_count, epochs=epochs, verbose=2)
 		if save_model:
 			self.save_model()
 		
@@ -200,6 +206,26 @@ def load_vocabulary(model_name):
 	print("Loaded vocabulary")
 	#print(vocab.vocabulary[:50])
 	return vocab
+
+def generate_data(model_name, window_size, batch_size):
+	text = load_corpus(model_name)
+	vocab = load_vocabulary(model_name)
+	ids = np.array(range(len(text)))
+	np.random.shuffle(ids)
+	i = 0
+	while True:
+		X = []
+		y = []
+		for b in range(batch_size):
+			idx = ids[i]
+			i += 1
+			X.append(vocab.word2onehot(text[idx]))
+			context = []
+			for j in range(i-window_size, i+window_size+1):
+				if j != i and j >= 0 and j < len(text):
+					context.append(text[j])
+			y.append(vocab.context2onehot(context))
+		yield (np.array(X), np.array(y))
 	
 def create_training_data(model_name, vocab, window_size):
 	text = load_corpus(model_name)
@@ -218,12 +244,12 @@ def create_training_data(model_name, vocab, window_size):
 	print("Training data created")
 	return X_train, y_train
 	
-def train_embedding_model(model_name, window_size=2, epochs=10, vocab=None):
+def train_embedding_model(model_name, window_size=2, epochs=10, batch_size=32, vocab=None):
 	# Get vocabulary
 	if not vocab:
 		vocab = get_vocabulary(model_name)
 	# Create skip-grams, i.e. the training data
-	X_train, y_train = create_training_data(model_name, vocab, window_size)
+	# X_train, y_train = create_training_data(model_name, vocab, window_size)
 	#print(X_train.shape)
 	#print("Samples:", len(training_data))
 	# Create model
@@ -231,7 +257,11 @@ def train_embedding_model(model_name, window_size=2, epochs=10, vocab=None):
 	model.init_model()
 	# Train model
 	print("Starting training")
-	model.train(X_train, y_train, epochs=epochs)
+	#model.train(X_train, y_train, epochs=epochs)
+	text_length = len(load_corpus(model_name))
+	step_count = text_length//batch_size
+	print("T,B,S:" + str(text_length) + ", " + str(batch_size) + ", " + str(step_count))
+	model.train_generator(generate_data(model_name, window_size, batch_size), step_count, epochs)
 	return model
 	
 def create_vocabulary_embedding(model_name):
@@ -243,7 +273,7 @@ def create_vocabulary_embedding(model_name):
 		embedding_model.load_model()
 	except OSError:
 		print("Could not load embedding model. Attempting training.")
-		embedding_model = train_embedding_model(model_name, FLAGS.window_size, FLAGS.epochs, vocab)
+		embedding_model = train_embedding_model(model_name, FLAGS.window_size, FLAGS.epochs, FLAGS.batch_size, vocab)
 	# Create a list of embeddings for each word in the vocabulary
 	embeddings = []
 	for word in vocab.vocabulary:
