@@ -21,12 +21,13 @@ flags.DEFINE_string('model', None, 'The name of the model')
 flags.DEFINE_integer('window_size', 2, 'Size of context window, defaults to 2', lower_bound=1)
 flags.DEFINE_integer('epochs', 10, 'Number of epochs to train, defaults to 10', lower_bound=1)
 flags.DEFINE_integer('dimensions', 100, 'Number of dimensions to embed words in, defaults to 100', lower_bound=1)
+flags.DEFINE_string('output', None, 'Output file name')
 #flags.DEFINE_boolean('debug', False, 'Produces debugging output.')
 
 # Class for training word2vec embeddings
 class EmbeddingModel:
 
-	def __init__(self, model_name, vocab, n=100):
+	def __init__(self, model_name, vocab, n):
 		self.vocabulary = vocab
 		self.model_name = model_name
 		self.dimensions = n
@@ -71,15 +72,16 @@ class EmbeddingModel:
 # Model for transforms between to word2vec embeddings (order matters)
 class TransformModel:
 	
-	def __init__(self, input_name, output_name, n=100):
+	def __init__(self, input_name, output_name, n):
 		self.input_model_name = input_name
 		self.output_model_name = output_name
 		self.dimensions = n
 
 	def init_model(self):
 		self.model = Sequential()
-		self.model.add(Dense(50, input_shape=(self.dimensions,)))
-		self.model.add(Dense(self.dimensions))
+		#self.model.add(Dense(50, input_shape=(self.dimensions,)))
+		#self.model.add(Dense(self.dimensions))
+		self.model.add(Dense(self.dimensions, input_shape=(self.dimensions,)))
 		self.model.compile(optimizer='adam', loss='cosine_proximity', metrics=['cosine_proximity'])
 		print("Initialized transform model")
 		
@@ -225,7 +227,7 @@ def train_embedding_model(model_name, window_size=2, epochs=10, vocab=None):
 	#print(X_train.shape)
 	#print("Samples:", len(training_data))
 	# Create model
-	model = EmbeddingModel(model_name, vocab)
+	model = EmbeddingModel(model_name, vocab, FLAGS.dimensions)
 	model.init_model()
 	# Train model
 	print("Starting training")
@@ -318,7 +320,7 @@ def train_transform_model(input_model_name, output_model_name):
 	return transform_model
 
 def get_transfrom_model(input_model_name, output_model_name):
-	transform_model = TransformModel(input_model_name, output_model_name)
+	transform_model = TransformModel(input_model_name, output_model_name,FLAGS.dimensions)
 	try:
 		transform_model.load_model()
 	except OSError:
@@ -360,10 +362,15 @@ def transfer_style(input_file, input_model_name, output_model_name, output_file=
 		# Replace the word
 		new_tokens[i] = word
 	new_text = nltk.Text(new_tokens)
-	# Print new text
-	for word in new_text:
-		print(word, end=' ')
-	return
+	if not output_file and not output_file == "":
+		# Print new text
+		for word in new_text:
+			print(word, end=' ')
+	else:
+		text_file = open(output_file, "w")
+		for word in new_text:
+			text_file.write(word + " ")
+		text_file.close()
 	
 def main(argv):
 	# Check that relevant parameters have been given
@@ -372,6 +379,7 @@ def main(argv):
 		sys.exit()
 	# Interpret command line arguments and call correct function
 	operation = sys.argv[1]
+	print("Dimensions: " + str(FLAGS.dimensions))
 	if operation == "train-transform":
 		input_model_name = sys.argv[2]
 		output_model_name = sys.argv[3]
@@ -380,7 +388,7 @@ def main(argv):
 		input_file = sys.argv[2]
 		input_model_name = sys.argv[3]
 		output_model_name = sys.argv[4]
-		transfer_style(input_file, input_model_name, output_model_name)
+		transfer_style(input_file, input_model_name, output_model_name, FLAGS.output)
 	elif operation == "proximity-test":
 		model_name = sys.argv[2]
 		embeddings = get_vocabulary_embedding(model_name)
