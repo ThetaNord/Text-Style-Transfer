@@ -1,4 +1,4 @@
-import sys, os
+import sys, os, io
 #import unidecode
 
 import numpy as np
@@ -157,7 +157,8 @@ def load_corpus(model_name):
 	corpus_path = os.path.join(cwd, 'models', model_name, 'corpus.txt')
 	raw = None
 	try:
-		raw = open(corpus_path).read()
+		f = io.open(corpus_path, mode="r", encoding="utf-8")
+		raw = f.read()
 	except FileNotFoundError:
 		print("Could not open corpus file in location", corpus_path)
 		print("Make sure that the file exists and is accessible")
@@ -188,9 +189,9 @@ def create_vocabulary(model_name):
 	# Save vocabulary to file
 	cwd = os.getcwd()
 	vocab_path = os.path.join(cwd, 'models', model_name, 'vocabulary.txt')
-	vocab_file = open(vocab_path, "w")
+	vocab_file = open(vocab_path, "wb")
 	for word in vocab.vocabulary:
-		vocab_file.write(word + "\n")
+		vocab_file.write((word + "\n").encode('UTF-8'))
 	print("Saved vocabulary")
 	return vocab
 	
@@ -198,7 +199,7 @@ def load_vocabulary(model_name):
 	# Load vocabulary file
 	cwd = os.getcwd()
 	vocab_path = os.path.join(cwd, 'models', model_name, 'vocabulary.txt')
-	vocab_file = open(vocab_path)
+	vocab_file = io.open(vocab_path, mode="r", encoding="utf-8")
 	words = []
 	for line in vocab_file.readlines():
 		words.append(line.rstrip())
@@ -247,7 +248,7 @@ def create_training_data(model_name, vocab, window_size):
 	print("Training data created")
 	return X_train, y_train
 	
-def train_embedding_model(model_name, window_size=2, epochs=10, batch_size=32, vocab=None):
+def train_embedding_model(model_name, window_size, epochs, batch_size, vocab=None):
 	# Get vocabulary
 	if not vocab:
 		vocab = get_vocabulary(model_name)
@@ -326,17 +327,17 @@ def find_nearest_word(vocab, embeddings, input_coordinates):
 			word = vocab.vocabulary[i]
 			score = new_score
 	return word, score
-	
-def train_transform_model(input_model_name, output_model_name):
+
+def get_transform_data(input_model_name, output_model_name, threshold_count=5):
+	# Load output corpus
+	text = load_corpus(output_model_name)
+	words = [w.lower() for w in text]
 	# Load vocabularies for both models
 	input_vocabulary = get_vocabulary(input_model_name)
 	output_vocabulary = get_vocabulary(output_model_name)
 	# Load embeddings for both models
 	input_embeddings = get_vocabulary_embedding(input_model_name)
 	output_embeddings = get_vocabulary_embedding(output_model_name)
-	# Create transform model
-	transform_model = TransformModel(input_model_name, output_model_name, FLAGS.dimensions)
-	transform_model.init_model()
 	# Identify words shared between vocabularies and create training data
 	X_train = []
 	y_train = []
@@ -344,10 +345,22 @@ def train_transform_model(input_model_name, output_model_name):
 		w = input_vocabulary.vocabulary[i]
 		other_idx = output_vocabulary.get_index(w)
 		if other_idx:
-			X_train.append(input_embeddings[i])
-			y_train.append(output_embeddings[other_idx])
+			w_count = words.count(w)
+			if w_count >= threshold_count:
+				for x in range(w_count//threshold_count):
+					X_train.append(input_embeddings[i])
+					y_train.append(output_embeddings[other_idx])
 	X_train = np.squeeze(np.asarray(X_train))
 	y_train = np.squeeze(np.asarray(y_train))
+	return X_train, y_train
+	
+	
+def train_transform_model(input_model_name, output_model_name):
+	# Create transform model
+	transform_model = TransformModel(input_model_name, output_model_name, FLAGS.dimensions)
+	transform_model.init_model()
+	# Get training data
+	X_train, y_train = get_transform_data(input_model_name, output_model_name)
 	# Train the model
 	transform_model.train(X_train, y_train, FLAGS.epochs, save_model=True)
 	return transform_model
@@ -400,9 +413,9 @@ def transfer_style(input_file, input_model_name, output_model_name, output_file=
 		for word in new_text:
 			print(word, end=' ')
 	else:
-		text_file = open(output_file, "w")
+		text_file = open(output_file, "wb")
 		for word in new_text:
-			text_file.write(word + " ")
+			text_file.write((word + " ").encode('UTF-8'))
 		text_file.close()
 	
 def main(argv):
