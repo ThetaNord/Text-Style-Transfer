@@ -1,5 +1,6 @@
 tst_env/
 data/
 models/
+output/
 output.txt
 input.txt

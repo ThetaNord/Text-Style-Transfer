@@ -48,7 +48,7 @@ class EmbeddingModel:
 			self.save_model()
 			
 	def train_generator(self, generator_func, step_count, epochs, save_model=True):
-		self.model.fit_generator(generator=generator_func, steps_per_epoch=step_count, epochs=epochs, verbose=2)
+		self.model.fit_generator(generator=generator_func, steps_per_epoch=step_count, epochs=epochs)
 		if save_model:
 			self.save_model()
 		
@@ -217,12 +217,15 @@ def generate_data(model_name, window_size, batch_size):
 		X = []
 		y = []
 		for b in range(batch_size):
+			if i == len(ids):
+				i = 0
+				np.random.shuffle(ids)
 			idx = ids[i]
 			i += 1
 			X.append(vocab.word2onehot(text[idx]))
 			context = []
-			for j in range(i-window_size, i+window_size+1):
-				if j != i and j >= 0 and j < len(text):
+			for j in range(idx-window_size, idx+window_size+1):
+				if j != idx and j >= 0 and j < len(text):
 					context.append(text[j])
 			y.append(vocab.context2onehot(context))
 		yield (np.array(X), np.array(y))
