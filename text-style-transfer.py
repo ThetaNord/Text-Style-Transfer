@@ -61,7 +61,7 @@ class EmbeddingModel:
 		
 	def get_model_path(self):
 		cwd = os.getcwd()
-		model_path = os.path.join(cwd, 'models', self.model_name, 'embedding_model.h5')
+		model_path = os.path.join(cwd, 'models', self.model_name, 'embedding_model_' + str(FLAGS.dimensions) + '.h5')
 		return model_path
 		
 	def load_model(self):
@@ -380,6 +380,12 @@ def load_input_text(input_file):
 	text = nltk.Text(cleaned_tokens)
 	return text
 	
+def get_word_list(text):
+	words = [w.lower() for w in text]
+	words = sorted(set(words))
+	words = [w for w in words if w not in "''``.,!?;:--()"]
+	return words
+
 def transfer_style(input_file, input_model_name, output_model_name, output_file=None):
 	# Get vocabularies for both models
 	input_vocabulary = get_vocabulary(input_model_name)
@@ -391,20 +397,27 @@ def transfer_style(input_file, input_model_name, output_model_name, output_file=
 	transform_model = get_transfrom_model(input_model_name, output_model_name)
 	# Load input text
 	text = load_input_text(input_file)
-	new_tokens = [None] * len(text)
-	# For each word in input text
-	for i in range(len(text)):
-		word = text[i]
-		# Find if it exists in input corpus
+	# Create replacement dictionary
+	keys = get_word_list(text)
+	r_dict = {}
+	for word in keys:
 		if word in input_vocabulary.vocabulary:
-			print('"'+word+'" replaced with "', end="")
+			print('"'+word+'" will be replaced with "', end="")
 			# Transform to output embedding
 			idx = input_vocabulary.get_index(word)
 			embedding = input_embeddings[idx]
 			transformed_embedding = transform_model.transform(embedding)
 			# Find nearest neighbour in output space
-			word, score = find_nearest_word(output_vocabulary, output_embeddings, transformed_embedding)
-			print(word+'" ('+str(score)+')')
+			new_word, score = find_nearest_word(output_vocabulary, output_embeddings, transformed_embedding)
+			print(new_word+'" ('+str(score)+')')
+			r_dict[word] = new_word
+	new_tokens = [None] * len(text)
+	# For each word in input text
+	for i in range(len(text)):
+		word = text[i]
+		# Find if it exists in replacement dictionary
+		if word in r_dict.keys():
+			word = r_dict[word]
 		# Replace the word
 		new_tokens[i] = word
 	new_text = nltk.Text(new_tokens)
