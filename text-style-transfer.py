@@ -18,12 +18,12 @@ from absl import app, flags
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('model', None, 'The name of the model')
-flags.DEFINE_integer('window_size', 2, 'Size of context window, defaults to 2', lower_bound=1)
+flags.DEFINE_integer('window_size', 10, 'Size of context window, defaults to 10', lower_bound=1)
 flags.DEFINE_integer('batch_size', 32, 'Batch size for embedding training, defaults to 32', lower_bound=1)
-flags.DEFINE_integer('epochs', 10, 'Number of epochs to train, defaults to 10', lower_bound=1)
-flags.DEFINE_integer('dimensions', 100, 'Number of dimensions to embed words in, defaults to 100', lower_bound=1)
+flags.DEFINE_integer('epochs', 20, 'Number of epochs to train, defaults to 20', lower_bound=1)
+flags.DEFINE_integer('dimensions', 250, 'Number of dimensions to embed words in, defaults to 250', lower_bound=1)
 flags.DEFINE_string('output', None, 'Output file name')
-#flags.DEFINE_boolean('debug', False, 'Produces debugging output.')
+flags.DEFINE_boolean('debug', False, 'Produces debugging output.')
 
 # Class for training word2vec embeddings
 class EmbeddingModel:
@@ -66,7 +66,7 @@ class EmbeddingModel:
 		
 	def load_model(self):
 		self.model = load_model(self.get_model_path())
-		print(self.model.summary())
+		if FLAGS.debug: print(self.model.summary())
 		self.embedding_model = Model(inputs=self.model.input, outputs=self.model.get_layer("embedding").output)
 		print("Loaded existing embedding model")
 	
@@ -102,7 +102,7 @@ class TransformModel:
 		
 	def get_model_path(self):
 		cwd = os.getcwd()
-		model_path = os.path.join(cwd, 'models', self.input_model_name, 'to_' + self.output_model_name + '.h5')
+		model_path = os.path.join(cwd, 'models', self.input_model_name, 'to_' + self.output_model_name + '_' + str(FLAGS.dimensions) + '.h5')
 		return model_path
 		
 	def load_model(self):
@@ -285,7 +285,7 @@ def create_vocabulary_embedding(model_name):
 	embeddings = np.array(embeddings)
 	# Save embedding to file
 	cwd = os.getcwd()
-	embed_path = os.path.join(cwd, 'models', model_name, 'embeddings.npy')
+	embed_path = os.path.join(cwd, 'models', model_name, 'embeddings_'+ str(FLAGS.dimensions) +'.npy')
 	np.save(embed_path, embeddings)
 	print("Embeddings saved")
 	return embeddings
@@ -293,7 +293,7 @@ def create_vocabulary_embedding(model_name):
 def load_vocabulary_embedding(model_name):
 	# Load embedding file
 	cwd = os.getcwd()
-	embed_path = os.path.join(cwd, 'models', model_name, 'embeddings.npy')
+	embed_path = os.path.join(cwd, 'models', model_name, 'embeddings_' + str(FLAGS.dimensions) +'.npy')
 	embeddings = np.load(embed_path)
 	return embeddings
 	
@@ -304,19 +304,24 @@ def get_vocabulary_embedding(model_name):
 		embedding = create_vocabulary_embedding(model_name)
 	return embedding
 	
-def find_closest_words(model_name, embeddings, word, n=5):
+def proximity_test(model_name, n=2):
 	vocab = get_vocabulary(model_name)
+	embeddings = get_vocabulary_embedding(model_name)
+	for word in vocab.vocabulary:
+		find_closest_words(word, vocab, embeddings, n)
+
+def find_closest_words(word, vocab, embeddings, n=5):
 	index = vocab.get_index(word)
 	scores = []
 	for i in range(vocab.count):
 		scores.append(cosine_similarity(embeddings[i], embeddings[index])[0][0])
 	scores = np.array(scores)
-	print(scores.shape)
+	if FLAGS.debug: print(scores.shape)
 	ind = np.argpartition(scores, -(n+1))[-(n+1):]
 	ind = ind[np.argsort(scores[ind])[::-1]]
-	print("Closest matches for '", word, "' are:")
+	print(word + " - Closest matches are:")
 	for i in ind[1:]:
-		print(vocab.vocabulary[i], ", score:", scores[i])
+		print("\t" + vocab.vocabulary[i], ", score:", scores[i])
 		
 def find_nearest_word(vocab, embeddings, input_coordinates):
 	word = None
@@ -353,7 +358,6 @@ def get_transform_data(input_model_name, output_model_name, threshold_count=5):
 	X_train = np.squeeze(np.asarray(X_train))
 	y_train = np.squeeze(np.asarray(y_train))
 	return X_train, y_train
-	
 	
 def train_transform_model(input_model_name, output_model_name):
 	# Create transform model
@@ -438,7 +442,7 @@ def main(argv):
 		sys.exit()
 	# Interpret command line arguments and call correct function
 	operation = sys.argv[1]
-	print("Dimensions: " + str(FLAGS.dimensions))
+	if FLAGS.debug: print("Dimensions: " + str(FLAGS.dimensions))
 	if operation == "train-transform":
 		input_model_name = sys.argv[2]
 		output_model_name = sys.argv[3]
@@ -450,11 +454,7 @@ def main(argv):
 		transfer_style(input_file, input_model_name, output_model_name, FLAGS.output)
 	elif operation == "proximity-test":
 		model_name = sys.argv[2]
-		embeddings = get_vocabulary_embedding(model_name)
-		find_closest_words(model_name, embeddings, "jesus")
-		find_closest_words(model_name, embeddings, "god")
-		find_closest_words(model_name, embeddings, "it")
-		find_closest_words(model_name, embeddings, "was")
+		proximity_test(model_name)
 	
 if __name__== "__main__":
 	app.run(main)
