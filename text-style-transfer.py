@@ -17,7 +17,7 @@ from nltk.corpus import stopwords
 from absl import app, flags
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('model', None, 'The name of the model')
+#flags.DEFINE_string('model', None, 'The name of the model')
 flags.DEFINE_integer('window_size', 10, 'Size of context window, defaults to 10', lower_bound=1)
 flags.DEFINE_integer('batch_size', 32, 'Batch size for embedding training, defaults to 32', lower_bound=1)
 flags.DEFINE_integer('epochs', 20, 'Number of epochs to train, defaults to 20', lower_bound=1)
