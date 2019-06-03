@@ -304,7 +304,7 @@ def get_vocabulary_embedding(model_name):
 		embedding = create_vocabulary_embedding(model_name)
 	return embedding
 	
-def proximity_test(model_name, n=2):
+def proximity_test(model_name, n=5):
 	vocab = get_vocabulary(model_name)
 	embeddings = get_vocabulary_embedding(model_name)
 	for word in vocab.vocabulary:
@@ -333,7 +333,7 @@ def find_nearest_word(vocab, embeddings, input_coordinates):
 			score = new_score
 	return word, score
 
-def get_transform_data(input_model_name, output_model_name, threshold_count=5):
+def get_transform_data(input_model_name, output_model_name, threshold_count=10):
 	# Load output corpus
 	text = load_corpus(output_model_name)
 	words = [w.lower() for w in text]
@@ -443,7 +443,10 @@ def main(argv):
 	# Interpret command line arguments and call correct function
 	operation = sys.argv[1]
 	if FLAGS.debug: print("Dimensions: " + str(FLAGS.dimensions))
-	if operation == "train-transform":
+	if operation == "create-vocabulary":
+		model_name = sys.argv[2]
+		create_vocabulary(model_name)
+	elif operation == "train-transform":
 		input_model_name = sys.argv[2]
 		output_model_name = sys.argv[3]
 		train_transform_model(input_model_name, output_model_name)
