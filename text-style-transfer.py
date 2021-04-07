@@ -10,7 +10,7 @@ from keras.models import Model, Sequential, load_model
 from keras.layers import Dense, Activation
 
 import nltk
-#nltk.download('punkt')
+nltk.download('punkt')
 from nltk import word_tokenize
 from nltk.corpus import stopwords
 
@@ -41,43 +41,43 @@ class EmbeddingModel:
 		self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['acc'])
 		self.embedding_model = Model(inputs=self.model.input, outputs=self.model.get_layer("embedding").output)
 		print("Initialized embedding model")
-		
+
 	def train(self, X_train, y_train, epochs, save_model=True):
 		self.model.fit(X_train, y_train, epochs=epochs)
 		if save_model:
 			self.save_model()
-			
+
 	def train_generator(self, generator_func, step_count, epochs, save_model=True):
 		self.model.fit_generator(generator=generator_func, steps_per_epoch=step_count, epochs=epochs)
 		if save_model:
 			self.save_model()
-		
+
 	def get_embedding(self, word):
 		embedding = None
 		if self.vocabulary.contains(word):
 			input = self.vocabulary.word2onehot(word)
 			embedding = self.embedding_model.predict(input.reshape((1, -1)))
 		return embedding
-		
+
 	def get_model_path(self):
 		cwd = os.getcwd()
 		model_path = os.path.join(cwd, 'models', self.model_name, 'embedding_model_' + str(FLAGS.dimensions) + '.h5')
 		return model_path
-		
+
 	def load_model(self):
 		self.model = load_model(self.get_model_path())
 		if FLAGS.debug: print(self.model.summary())
 		self.embedding_model = Model(inputs=self.model.input, outputs=self.model.get_layer("embedding").output)
 		print("Loaded existing embedding model")
-	
+
 	def save_model(self):
 		self.model.save(self.get_model_path())
 		print("Saved embedding model")
-		
-		
+
+
 # Model for transforms between to word2vec embeddings (order matters)
 class TransformModel:
-	
+
 	def __init__(self, input_name, output_name, n):
 		self.input_model_name = input_name
 		self.output_model_name = output_name
@@ -88,46 +88,46 @@ class TransformModel:
 		#self.model.add(Dense(50, input_shape=(self.dimensions,)))
 		#self.model.add(Dense(self.dimensions))
 		self.model.add(Dense(self.dimensions, input_shape=(self.dimensions,)))
-		self.model.compile(optimizer='adam', loss='cosine_proximity', metrics=['cosine_proximity'])
+		self.model.compile(optimizer='adam', loss='cosine_similarity', metrics=['cosine_similarity'])
 		print("Initialized transform model")
-		
+
 	def train(self, X_train, y_train, epochs, save_model=True):
 		self.model.fit(X_train, y_train, epochs=epochs)
 		if save_model:
 			self.save_model()
-			
+
 	def transform(self, input):
 		transform = self.model.predict(input.reshape((1, -1)))
 		return transform
-		
+
 	def get_model_path(self):
 		cwd = os.getcwd()
 		model_path = os.path.join(cwd, 'models', self.input_model_name, 'to_' + self.output_model_name + '_' + str(FLAGS.dimensions) + '.h5')
 		return model_path
-		
+
 	def load_model(self):
 		self.model = load_model(self.get_model_path())
 		print("Loaded existing transform model")
-	
+
 	def save_model(self):
 		self.model.save(self.get_model_path())
 		print("Saved transform model")
-	
+
 class Vocabulary:
-	
+
 	def __init__(self, vocab):
 		self.vocabulary = vocab
 		self.count = len(vocab)
-		
+
 	def contains(self, word):
 		word = word.lower()
 		return word in self.vocabulary
-		
+
 	def get_index(self, word):
 		word = word.lower()
 		if word in self.vocabulary:
 			return self.vocabulary.index(word)
-		
+
 	def word2onehot(self, word):
 		onehot = np.zeros(self.count)
 		try:
@@ -138,7 +138,7 @@ class Vocabulary:
 			sys.exit()
 		onehot[word_index] = 1;
 		return onehot
-		
+
 	def context2onehot(self, context):
 		onehot = np.zeros(self.count)
 		for word in context:
@@ -176,7 +176,7 @@ def get_vocabulary(model_name):
 	except FileNotFoundError:
 		vocab = create_vocabulary(model_name)
 	return vocab
-	
+
 def create_vocabulary(model_name):
 	# Load text from corpus
 	text = load_corpus(model_name)
@@ -194,7 +194,7 @@ def create_vocabulary(model_name):
 		vocab_file.write((word + "\n").encode('UTF-8'))
 	print("Saved vocabulary")
 	return vocab
-	
+
 def load_vocabulary(model_name):
 	# Load vocabulary file
 	cwd = os.getcwd()
@@ -230,7 +230,7 @@ def generate_data(model_name, window_size, batch_size):
 					context.append(text[j])
 			y.append(vocab.context2onehot(context))
 		yield (np.array(X), np.array(y))
-	
+
 def create_training_data(model_name, vocab, window_size):
 	text = load_corpus(model_name)
 	X_train = []
@@ -247,7 +247,7 @@ def create_training_data(model_name, vocab, window_size):
 	y_train = np.asarray(y_train)
 	print("Training data created")
 	return X_train, y_train
-	
+
 def train_embedding_model(model_name, window_size, epochs, batch_size, vocab=None):
 	# Get vocabulary
 	if not vocab:
@@ -267,7 +267,7 @@ def train_embedding_model(model_name, window_size, epochs, batch_size, vocab=Non
 	print("T,B,S:" + str(text_length) + ", " + str(batch_size) + ", " + str(step_count))
 	model.train_generator(generate_data(model_name, window_size, batch_size), step_count, epochs)
 	return model
-	
+
 def create_vocabulary_embedding(model_name):
 	# Load or create vocabulary
 	vocab = get_vocabulary(model_name)
@@ -289,21 +289,21 @@ def create_vocabulary_embedding(model_name):
 	np.save(embed_path, embeddings)
 	print("Embeddings saved")
 	return embeddings
-	
+
 def load_vocabulary_embedding(model_name):
 	# Load embedding file
 	cwd = os.getcwd()
 	embed_path = os.path.join(cwd, 'models', model_name, 'embeddings_' + str(FLAGS.dimensions) +'.npy')
 	embeddings = np.load(embed_path)
 	return embeddings
-	
+
 def get_vocabulary_embedding(model_name):
 	try:
 		embedding = load_vocabulary_embedding(model_name)
 	except FileNotFoundError:
 		embedding = create_vocabulary_embedding(model_name)
 	return embedding
-	
+
 def proximity_test(model_name, n=5):
 	vocab = get_vocabulary(model_name)
 	embeddings = get_vocabulary_embedding(model_name)
@@ -322,7 +322,7 @@ def find_closest_words(word, vocab, embeddings, n=5):
 	print(word + " - Closest matches are:")
 	for i in ind[1:]:
 		print("\t" + vocab.vocabulary[i], ", score:", scores[i])
-		
+
 def find_nearest_word(vocab, embeddings, input_coordinates):
 	word = None
 	score = 0
@@ -358,7 +358,7 @@ def get_transform_data(input_model_name, output_model_name, threshold_count=10):
 	X_train = np.squeeze(np.asarray(X_train))
 	y_train = np.squeeze(np.asarray(y_train))
 	return X_train, y_train
-	
+
 def train_transform_model(input_model_name, output_model_name):
 	# Create transform model
 	transform_model = TransformModel(input_model_name, output_model_name, FLAGS.dimensions)
@@ -376,14 +376,14 @@ def get_transfrom_model(input_model_name, output_model_name):
 	except OSError:
 		transform_model = train_transform_model(input_model_name, output_model_name)
 	return transform_model
-	
+
 def load_input_text(input_file):
 	raw = open(input_file).read()
 	tokens = word_tokenize(raw)
 	cleaned_tokens = [w.lower() for w in tokens]
 	text = nltk.Text(cleaned_tokens)
 	return text
-	
+
 def get_word_list(text):
 	words = [w.lower() for w in text]
 	words = sorted(set(words))
@@ -434,7 +434,7 @@ def transfer_style(input_file, input_model_name, output_model_name, output_file=
 		for word in new_text:
 			text_file.write((word + " ").encode('UTF-8'))
 		text_file.close()
-	
+
 def main(argv):
 	# Check that relevant parameters have been given
 	if (len(sys.argv) < 2):
@@ -458,6 +458,6 @@ def main(argv):
 	elif operation == "proximity-test":
 		model_name = sys.argv[2]
 		proximity_test(model_name)
-	
+
 if __name__== "__main__":
 	app.run(main)
